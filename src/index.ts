@@ -13,7 +13,6 @@ export const SocketCode = {
 export const BROWSER = unwrap(await tryCatch(initBrowser()))
 
 type Routes = {
-    "/*": RouterTypes.RouteValue<"/*">
     "/health": RouterTypes.RouteValue<"/health">
     "/health/downstream": RouterTypes.RouteValue<"/health/downstream">
     "/api/:platform/:streamer/chat": RouterTypes.RouteValue<"/api/:platform/:streamer/chat">
@@ -23,7 +22,6 @@ type Routes = {
 const s = Bun.serve<WebSocketData, Routes>({
     idleTimeout: 60,
 	routes: {
-        "/*": Resp.NotFound(),
         "/health": (req, server) => {
 			const ip = server.requestIP(req)
 
@@ -93,7 +91,9 @@ const s = Bun.serve<WebSocketData, Routes>({
             return Resp.Ok(profileUrl)
         },
         "/api/:platform/:streamer/chat": async (req, server) => {
-            const {platform, streamer} = req.params
+            let {platform, streamer} = req.params
+            platform = platform.toUpperCase() as Platform
+            streamer = streamer.toLowerCase()
 			const ip = server.requestIP(req)
 
 			if (!streamer) {
@@ -108,11 +108,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 			}
 
             if (!s.upgrade(req, {
-                data: {
-                    streamer: streamer.toLowerCase(), 
-                    platform: platform.toUpperCase() as Platform,
-                    clientId: btoa(`${ip?.address}:${ip?.port}`)
-                },
+                data: { streamer, platform, clientId: btoa(`${ip?.address}:${ip?.port}`) },
             })) {
                 return Resp.InternalServerError("Upgrade failed")
             }

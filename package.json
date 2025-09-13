@@ -1,19 +1,24 @@
 {
-  "name": "chatsoup",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@flydotio/dockerfile": "^0.7.10",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "@coreyrobinsondev/emoji": "^1.0.8",
-    "puppeteer": "^24.20.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
-  }
+	"name": "chatsoup",
+	"module": "index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"dev": "bun src/index.ts",
+		"start": "NODE_ENV=production bun src/index.ts",
+		"build": "bun run build.ts"
+	},
+	"devDependencies": {
+		"@flydotio/dockerfile": "^0.7.10",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"@coreyrobinsondev/emoji": "^1.0.8",
+		"puppeteer": "^24.20.0",
+		"puppeteer-extra": "^3.3.6",
+		"puppeteer-extra-plugin-stealth": "^2.11.2"
+	}
 }
