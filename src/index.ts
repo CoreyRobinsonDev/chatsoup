@@ -75,7 +75,7 @@ const s = Bun.serve<WebSocketData, Routes>({
                 return Resp.BadRequest(`Error on visiting ${site}`)
             }
 
-            const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, streamer, page))
+            const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, page))
             if (!profileUrl) {
                 log.error(profileUrlErr)
                 return Resp.BadRequest(`Error on fetching ${site} profile`)

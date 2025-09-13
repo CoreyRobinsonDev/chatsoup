@@ -1,7 +1,7 @@
 import { Browser, executablePath, Page, type LaunchOptions } from "puppeteer";
 import stealthPlugin from "puppeteer-extra-plugin-stealth"
 import puppeteer from "puppeteer-extra"
-import { Platform, type Chat } from "./types";
+import { type Platform, type Chat } from "./types";
 import path from "path";
 import { emojis, type Emojis } from "@coreyrobinsondev/emoji"
 
@@ -21,18 +21,18 @@ const CONFIG: LaunchOptions = {
 	headless: true 
 }
 
-export async function getProfile(platform: Platform, streamer: string, page: Page): Promise<string> {
+export async function getProfile(platform: Platform, page: Page): Promise<string> {
     let profile = ""
 
     switch(platform) {
-    case Platform.KICK:
+    case "KICK": 
         profile =  await page.$eval("img#channel-avatar", avatar => avatar.getAttribute("src") ?? "")
         break
-    case Platform.TWITCH:
+    case "TWITCH":
         profile = await page.$eval("div[aria-label=\"Channel Avatar Picture\"] img.tw-image.tw-image-avatar", avatar => avatar.getAttribute("src") ?? "") 
         break
-    case Platform.TWITTER:
-    case Platform.YOUTUBE:
+    case "TWITTER": 
+    case "YOUTUBE":
     }
 
     await page.close()
@@ -40,7 +40,7 @@ export async function getProfile(platform: Platform, streamer: string, page: Pag
 }
 
 export async function kick(page: Page): Promise<Chat[]> {
-    const chat  = await page.$$eval("div.chat-entry > div", chats => {
+    const chat: Chat[]  = await page.$$eval("div.chat-entry > div", chats => {
         return chats.map(el => {
             const badgeImg = el.querySelector("img.icon")?.getAttribute("src")
             const badgeName = el.querySelector("img.icon")?.getAttribute("alt")
@@ -49,7 +49,7 @@ export async function kick(page: Page): Promise<Chat[]> {
                 ?.split("(").at(-1)
                 ?.split(",")
                 .slice(0, 3)
-                .map((el, idx) => {
+                .map((el: string, idx: number) => {
                     if (idx === 2) {
                         return Number(el.trim().split(")")[0])
                     }
@@ -80,8 +80,10 @@ export async function kick(page: Page): Promise<Chat[]> {
 
 
             return {
-                badgeName: badgeName ? badgeName : undefined,
-                badgeImg: badgeImg ? badgeImg : undefined,
+				badges: [{
+					badgeName: badgeName ? badgeName : "",
+					badgeImg: badgeImg ? badgeImg : "",
+				}],
                 userName: userName ? userName : "ERR",
                 userColor: userColor ? userColor : [0,0,0],
                 content,
@@ -97,7 +99,7 @@ export async function kick(page: Page): Promise<Chat[]> {
             if (!el.emoteContainer) return el
             
             for (const key of Object.keys(el.emoteContainer)) {
-                el.emoteContainer[key] = emojis[key as keyof Emojis] ? emojis[key as keyof Emojis].emojiBlob : el.emoteContainer[key]
+                el.emoteContainer[key] = emojis[key as keyof Emojis] ? emojis[key as keyof Emojis].emojiBlob : el.emoteContainer[key]!
             }
 
             return el
@@ -105,7 +107,7 @@ export async function kick(page: Page): Promise<Chat[]> {
 }
 
 export async function twitch(page: Page): Promise<Chat[]> {
-    const chat = await page.$$eval("main.seventv-chat-list > div", chats => {
+    const chat: Chat[] = await page.$$eval("main.seventv-chat-list > div", chats => {
         return chats.map(el => {
 			const badgeImg = el.querySelector(".seventv-chat-badge > img")?.getAttribute("srcset")?.split(", ").at(-1)?.slice(0, -3)
 			const badgeName = el.querySelector(".seventv-chat-badge > img")?.getAttribute("alt")
@@ -114,7 +116,7 @@ export async function twitch(page: Page): Promise<Chat[]> {
 				?.split("(").at(-1)
 				?.split(",")
 				.slice(0, 3)
-				.map((el, idx) => {
+				.map((el: string, idx: number) => {
 					if (idx === 2) {
 						return Number(el.trim().split(")")[0])
 					}
@@ -147,8 +149,10 @@ export async function twitch(page: Page): Promise<Chat[]> {
 			}
 
 			return {
-				badgeName: badgeName ? badgeName : undefined,
-				badgeImg: badgeImg ? badgeImg : undefined,
+				badges: [{
+					badgeName: badgeName ? badgeName : undefined,
+					badgeImg: badgeImg ? badgeImg : undefined,
+				}],
 				userName: userName ? userName : "ERR",
 				userColor: userColor ? userColor : [0,0,0],
                 // removing double spacing around emotes
@@ -164,7 +168,7 @@ export async function twitch(page: Page): Promise<Chat[]> {
             if (!el.emoteContainer) return el
             
             for (const key of Object.keys(el.emoteContainer)) {
-                el.emoteContainer[key] = emojis[key as keyof Emojis] ? emojis[key as keyof Emojis].emojiBlob : el.emoteContainer[key]
+                el.emoteContainer[key] = emojis[key as keyof Emojis] ? emojis[key as keyof Emojis].emojiBlob : el.emoteContainer[key]!
             }
 
             return el
@@ -182,10 +186,10 @@ export async function youtube(page: Page): Promise<Chat[]> {
 
 export async function getChat(platform: Platform, page: Page): Promise<Chat[]> {
     switch(platform) {
-    case Platform.TWITCH: return twitch(page)
-    case Platform.KICK: return kick(page)
-    case Platform.TWITTER: return twitter(page)
-    case Platform.YOUTUBE: return youtube(page)
+    case "TWITCH": return twitch(page)
+    case "KICK": return kick(page)
+    case "TWITTER": return twitter(page)
+    case "YOUTUBE": return youtube(page)
     }
 }
 
