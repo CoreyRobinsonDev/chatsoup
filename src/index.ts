@@ -1,7 +1,6 @@
 import { getChat, getProfile, goto, initBrowser } from "./scrape.ts";
 import { log, Resp, tryCatch, unwrap } from "./util.ts";
 import { type WebSocketData, type Platform } from "./types.ts";
-import index from "./frontend/index.html" 
 import type { RouterTypes } from "bun";
 
 export const SocketCode = {
@@ -14,7 +13,6 @@ export const SocketCode = {
 export const BROWSER = unwrap(await tryCatch(initBrowser()))
 
 type Routes = {
-    "/": RouterTypes.RouteValue<"/">
     "/*": RouterTypes.RouteValue<"/*">
     "/health": RouterTypes.RouteValue<"/health">
     "/health/downstream": RouterTypes.RouteValue<"/health/downstream">
@@ -25,12 +23,20 @@ type Routes = {
 const s = Bun.serve<WebSocketData, Routes>({
     idleTimeout: 60,
 	routes: {
-		"/": index,
         "/*": Resp.NotFound(),
-        "/health": Resp.Ok("Up"),
-        "/health/downstream": async () => {
+        "/health": (req, server) => {
+			const ip = server.requestIP(req)
+
+			log.debug(`/health: ${btoa(`${ip?.address}:${ip?.port}`)}`)
+
+			return Resp.Ok("Up")
+		},
+        "/health/downstream": async (req, server) => {
             const kickRes = await fetch("https://kick.com")
             const twitchRes = await fetch("https://twitch.tv")
+			const ip = server.requestIP(req)
+
+			log.debug(`/health/downstream: ${btoa(`${ip?.address}:${ip?.port}`)}`)
 
             return Response.json({
                 status: 200,
@@ -41,10 +47,13 @@ const s = Bun.serve<WebSocketData, Routes>({
                 }
             }, { status: 200 })
         },
-        "/api/:platform/:streamer/profile": async req => {
+        "/api/:platform/:streamer/profile": async (req, server) => {
             let {platform, streamer} = req.params
             platform = platform.toUpperCase() as Platform
             streamer = streamer.toLowerCase()
+			const ip = server.requestIP(req)
+
+			log.debug(`/api/${platform}/${streamer}/profile: ${btoa(`${ip?.address}:${ip?.port}`)}`)
 
 			if (!streamer) {
 				return Resp.BadRequest(`No Streamer Provided`)
