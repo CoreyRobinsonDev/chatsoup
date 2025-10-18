@@ -249,10 +249,6 @@ export class LinkedList<T> {
 
 }
 
-export class Queue<T> {
-    buffer = []
-}
-
 
 
 

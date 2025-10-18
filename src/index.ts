@@ -15,8 +15,8 @@ export const BROWSER = unwrap(await tryCatch(initBrowser()))
 type Routes = {
     "/health": RouterTypes.RouteValue<"/health">
     "/health/downstream": RouterTypes.RouteValue<"/health/downstream">
-    "/api/:platform/:streamer/chat": RouterTypes.RouteValue<"/api/:platform/:streamer/chat">
-    "/api/:platform/:streamer/profile": RouterTypes.RouteValue<"/api/:platform/:streamer/profile">
+    "/:platform/:streamer/chat": RouterTypes.RouteValue<"/:platform/:streamer/chat">
+    "/:platform/:streamer/profile": RouterTypes.RouteValue<"/:platform/:streamer/profile">
 }
 
 const s = Bun.serve<WebSocketData, Routes>({
@@ -25,7 +25,7 @@ const s = Bun.serve<WebSocketData, Routes>({
         "/health": (req, server) => {
 			const ip = server.requestIP(req)
 
-			log.debug(`/health: ${btoa(`${ip?.address}:${ip?.port}`)}`)
+			console.log(`/health: ${btoa(ip!.address)}`)
 
 			return Resp.Ok("Up")
 		},
@@ -34,7 +34,7 @@ const s = Bun.serve<WebSocketData, Routes>({
             const twitchRes = await fetch("https://twitch.tv")
 			const ip = server.requestIP(req)
 
-			log.debug(`/health/downstream: ${btoa(`${ip?.address}:${ip?.port}`)}`)
+			console.log(`/health/downstream: ${btoa(ip!.address)}`)
 
             return Response.json({
                 status: 200,
@@ -45,13 +45,13 @@ const s = Bun.serve<WebSocketData, Routes>({
                 }
             }, { status: 200 })
         },
-        "/api/:platform/:streamer/profile": async (req, server) => {
+        "/:platform/:streamer/profile": async (req, server) => {
             let {platform, streamer} = req.params
             platform = platform.toUpperCase() as Platform
             streamer = streamer.toLowerCase()
 			const ip = server.requestIP(req)
 
-			log.debug(`/api/${platform}/${streamer}/profile: ${btoa(`${ip?.address}:${ip?.port}`)}`)
+			console.log(`/api/${platform}/${streamer}/profile: ${btoa(ip!.address)}`)
 
 			if (!streamer) {
 				return Resp.BadRequest(`No Streamer Provided`)
@@ -78,19 +78,19 @@ const s = Bun.serve<WebSocketData, Routes>({
 
             const [page, pageErr] = await tryCatch(goto(BROWSER, site))
             if (!page) {
-                log.error(pageErr)
+                console.error(pageErr)
                 return Resp.BadRequest(`Error on visiting ${site}`)
             }
 
             const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, page))
             if (!profileUrl) {
-                log.error(profileUrlErr)
+                console.error(profileUrlErr)
                 return Resp.BadRequest(`Error on fetching ${site} profile`)
             }
 
             return Resp.Ok(profileUrl)
         },
-        "/api/:platform/:streamer/chat": async (req, server) => {
+        "/:platform/:streamer/chat": async (req, server) => {
             let {platform, streamer} = req.params
             platform = platform.toUpperCase() as Platform
             streamer = streamer.toLowerCase()
@@ -108,7 +108,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 			}
 
             if (!s.upgrade(req, {
-                data: { streamer, platform, clientId: btoa(`${ip?.address}:${ip?.port}`) },
+                data: { streamer, platform, clientId: btoa(ip!.address) },
             })) {
                 return Resp.InternalServerError("Upgrade failed")
             }
@@ -124,10 +124,10 @@ const s = Bun.serve<WebSocketData, Routes>({
 			const clientId = ws.data.clientId
 			const streamer = ws.data.streamer
 			const platform = ws.data.platform
-            log.debug(`[${clientId}] has connected`)
+            console.log(`[${clientId}] has connected`)
 
 
-            log.debug(`[${clientId}] /${platform}/${streamer}`)
+            console.log(`[${clientId}] /${platform}/${streamer}`)
 			ws.subscribe(platform+streamer)
 			if (s.subscriberCount(platform+streamer) > 1) return
 
@@ -142,8 +142,8 @@ const s = Bun.serve<WebSocketData, Routes>({
             default:
                 ws.unsubscribe(platform+streamer)
                 ws.close(SocketCode.InternalServerError, `Call to ${platform} is unimplemented`)
-                log.debug(`[${clientId}] has disconnected`)
-                log.debug(`\t[${clientId}] Call to ${platform} is unimplemented`)
+                console.log(`[${clientId}] has disconnected`)
+                console.log(`\t[${clientId}] Call to ${platform} is unimplemented`)
 			}
 
             const [page, pageErr] = await tryCatch(goto(BROWSER, site))
@@ -155,9 +155,9 @@ const s = Bun.serve<WebSocketData, Routes>({
             if (!page) {
                 ws.unsubscribe(platform+streamer)
                 ws.close(SocketCode.InternalServerError, `Error on visiting ${site}`)
-                log.debug(`[${clientId}] has disconnected`)
-                log.error(`\tError on visiting ${site}`)
-                log.error(`\t${pageErr}`)
+                console.log(`[${clientId}] has disconnected`)
+                console.error(`\tError on visiting ${site}`)
+                console.error(`\t${pageErr}`)
                 return
             }
 
@@ -168,17 +168,17 @@ const s = Bun.serve<WebSocketData, Routes>({
                     ws.unsubscribe(platform+streamer)
                     ws.close(SocketCode.InternalServerError, `Error on scraping ${site}`)
                     await page.close()
-                    log.debug(`[${clientId}] has disconnected`)
-                    log.error(`\t[${clientId}] Error on scraping ${site}`)
-                    log.error(`\t${chatErr}`)
+                    console.log(`[${clientId}] has disconnected`)
+                    console.error(`\t[${clientId}] Error on scraping ${site}`)
+                    console.error(`\t${chatErr}`)
                     return
                 }
 
                 if (chat.length === 0) {
 					// NOTE: ignore for now since twitch chat takes too long to load meaningful data
 					continue
-                    // log.debug(`[${clientId}] has disconnected`)
-                    // log.debug(`\t[${clientId}] ${platform} streamer ${streamer} is offline`)
+                    // console.log(`[${clientId}] has disconnected`)
+                    // console.log(`\t[${clientId}] ${platform} streamer ${streamer} is offline`)
                     // ws.unsubscribe(platform+streamer)
                     // ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer.toLowerCase()} is offline`)
                     // await page.close()
@@ -190,8 +190,8 @@ const s = Bun.serve<WebSocketData, Routes>({
                     if (chat.length === 0) {
                         emptyResponses++
                         if (emptyResponses >= emptyRepsonseLimit) {
-                            log.debug(`[${clientId}] has disconnected`)
-                            log.debug(`\t${platform} streamer ${streamer} is offline`)
+                            console.log(`[${clientId}] has disconnected`)
+                            console.log(`\t${platform} streamer ${streamer} is offline`)
                             ws.unsubscribe(platform+streamer)
                             ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
                             await page.close()
@@ -205,8 +205,8 @@ const s = Bun.serve<WebSocketData, Routes>({
                     if (chat.slice(0, idx).length === 0) {
                         emptyResponses++
                         if (emptyResponses >= emptyRepsonseLimit) {
-                            log.debug(`[${clientId}] has disconnected`)
-                            log.debug(`\t${platform} streamer ${streamer} is offline`)
+                            console.log(`[${clientId}] has disconnected`)
+                            console.log(`\t${platform} streamer ${streamer} is offline`)
                             ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
                             await page.close()
                             return
@@ -224,7 +224,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 		},
 		async close(ws) {
 			ws.unsubscribe(ws.data.platform+ws.data.streamer)
-            log.debug(`[${ws.data.clientId}] has exited`)
+            console.log(`[${ws.data.clientId}] has exited`)
 		}
 	}
 })
@@ -236,4 +236,4 @@ process.on("SIGINT", async () => {
 	await BROWSER.close()
 })
 
-log.info(`Listening on ${s.url}`)
+console.log(`Listening on ${s.url}`)
