@@ -1,5 +1,5 @@
 import { getChat, getProfile, goto, initBrowser } from "./scrape.ts";
-import { log, Resp, tryCatch, unwrap } from "./util.ts";
+import { Resp, tryCatch, unwrap } from "./util.ts";
 import { type WebSocketData, type Platform } from "./types.ts";
 import type { RouterTypes } from "bun";
 
