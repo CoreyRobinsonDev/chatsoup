@@ -10,12 +10,12 @@ export type WebSocketData = {
 }
 
 export type Badge = {
-	badgeName: string
-	badgeImg: string
+	name: string
+	img: string
 }
 
 export type Chat = {
-	badges: Badge[]
+	badges?: Badge[]
 	userName: string
 	userColor: number[]
 	content: string

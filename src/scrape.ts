@@ -42,8 +42,14 @@ export async function getProfile(platform: Platform, page: Page): Promise<string
 export async function kick(page: Page): Promise<Chat[]> {
     const chat: Chat[]  = await page.$$eval("div.chat-entry > div", chats => {
         return chats.map(el => {
-            const badgeImg = el.querySelector("img.icon")?.getAttribute("src")
-            const badgeName = el.querySelector("img.icon")?.getAttribute("alt")
+			const badgeList = el.querySelectorAll("img.icon")
+			const badges = []
+			for (const badge of badgeList) {
+				badges.push({
+					img: badge?.getAttribute("src"),
+					name: badge?.getAttribute("alt")
+				})
+			}
             const userName = el.querySelector(".chat-entry-username")?.textContent
             const userColor = el.querySelector(".chat-entry-username")?.getAttribute("style")
                 ?.split("(").at(-1)
@@ -80,10 +86,7 @@ export async function kick(page: Page): Promise<Chat[]> {
 
 
             return {
-				badges: [{
-					badgeName: badgeName ? badgeName : "",
-					badgeImg: badgeImg ? badgeImg : "",
-				}],
+				badges: badges.length === 0 ? undefined : badges,
                 userName: userName ? userName : "ERR",
                 userColor: userColor ? userColor : [0,0,0],
                 content,
@@ -109,8 +112,15 @@ export async function kick(page: Page): Promise<Chat[]> {
 export async function twitch(page: Page): Promise<Chat[]> {
     const chat: Chat[] = await page.$$eval("main.seventv-chat-list > div", chats => {
         return chats.map(el => {
-			const badgeImg = el.querySelector(".seventv-chat-badge > img")?.getAttribute("srcset")?.split(", ").at(-1)?.slice(0, -3)
-			const badgeName = el.querySelector(".seventv-chat-badge > img")?.getAttribute("alt")
+			const badgeList = el.querySelectorAll(".seventv-chat-badge > img")
+			const badges = []
+			for (const badge of badgeList) {
+				badges.push({
+					img: badge?.getAttribute("srcset")?.split(", ").at(-1)?.slice(0, -3),
+					name: badge?.getAttribute("alt")
+				})
+			}
+
 			const userName = el.querySelector(".seventv-chat-user-username")?.textContent
 			const userColor = el.querySelector(".seventv-chat-user")?.getAttribute("style")
 				?.split("(").at(-1)
@@ -149,14 +159,11 @@ export async function twitch(page: Page): Promise<Chat[]> {
 			}
 
 			return {
-				badges: [{
-					badgeName: badgeName ? badgeName : undefined,
-					badgeImg: badgeImg ? badgeImg : undefined,
-				}],
+				badges: badges.length === 0 ? undefined : badges,
 				userName: userName ? userName : "ERR",
 				userColor: userColor ? userColor : [0,0,0],
                 // removing double spacing around emotes
-				content: content.split("  ").join(" ").trim(),
+ 				content: content.split("  ").join(" ").trim(),
 				emoteContainer: Object.keys(emoteContainer).length > 0 ? emoteContainer : undefined
 			}
         })
