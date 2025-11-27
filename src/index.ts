@@ -176,6 +176,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 
                 if (chat.length === 0) {
 					// NOTE: ignore for now since twitch chat takes too long to load meaningful data
+                    console.log(`[${clientId}] no chat fetched...`)
 					continue
                     // console.log(`[${clientId}] has disconnected`)
                     // console.log(`\t[${clientId}] ${platform} streamer ${streamer} is offline`)

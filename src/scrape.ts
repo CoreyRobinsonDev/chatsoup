@@ -18,7 +18,7 @@ const CONFIG: LaunchOptions = {
 	defaultViewport: { width: 1980, height: 1024 },
 	slowMo: 50, 
 	executablePath: executablePath(),
-	headless: true 
+	headless: process.env.NODE_ENV === "production" ? true : false 
 }
 
 export async function getProfile(platform: Platform, page: Page): Promise<string> {

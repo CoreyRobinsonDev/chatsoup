@@ -9,7 +9,6 @@
 		"build": "bun run build.ts"
 	},
 	"devDependencies": {
-		"@flydotio/dockerfile": "^0.7.10",
 		"@types/bun": "latest"
 	},
 	"peerDependencies": {
