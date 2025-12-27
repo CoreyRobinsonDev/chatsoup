@@ -77,7 +77,8 @@ const s = Bun.serve<WebSocketData, Routes>({
 					AND platform = ${platform};`
 
 				if (url.length > 0) {
-					return Resp.Ok(url[0].url)
+					profileUrls.push(url[0].url)
+					continue
 				}
 
 				let site = ""
