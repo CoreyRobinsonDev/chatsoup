@@ -72,7 +72,12 @@ const s = Bun.serve<WebSocketData, Routes>({
 				) { return Resp.BadRequest(`Invalid Plaform: ${platform}`) }
 
 				if (streamer === "ERR") { return Resp.BadRequest("Error parcing streamer") }
+				const url = await sql`SELECT url FROM profiles
+					WHERE streamer = ${streamer}
+					AND platform = ${platform};`
 
+				console.log(url)
+				return Resp.Ok()
 
 				let site = ""
 				switch (platform) {
