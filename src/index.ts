@@ -1,6 +1,6 @@
 import { getChat, getProfile, goto, initBrowser } from "./scrape.ts";
 import { Resp, tryCatch, unwrap } from "./util.ts";
-import { type WebSocketData, type Platform } from "./types.ts";
+import { type WebSocketData, type Platform, type Payload } from "./types.ts";
 import type { RouterTypes } from "bun";
 
 export const SocketCode = {
@@ -15,8 +15,8 @@ export const BROWSER = unwrap(await tryCatch(initBrowser()))
 type Routes = {
     "/health": RouterTypes.RouteValue<"/health">
     "/health/downstream": RouterTypes.RouteValue<"/health/downstream">
-    "/:platform/:streamer/chat": RouterTypes.RouteValue<"/:platform/:streamer/chat">
-    "/:platform/:streamer/profile": RouterTypes.RouteValue<"/:platform/:streamer/profile">
+    "/chat": RouterTypes.RouteValue<"/chat">
+    "/profile": RouterTypes.RouteValue<"/profile">
 }
 
 const s = Bun.serve<WebSocketData, Routes>({
@@ -45,74 +45,87 @@ const s = Bun.serve<WebSocketData, Routes>({
                 }
             }, { status: 200 })
         },
-        "/:platform/:streamer/profile": async (req, server) => {
-            let {platform, streamer} = req.params
-            platform = platform.toUpperCase() as Platform
-            streamer = streamer.toLowerCase()
-			const ip = server.requestIP(req)
+        "/profile": async (req, server) => {
+			const ip = server.requestIP(req)?.address ?? "IP_UNDEFINED"
+			const url = new URL(req.url)
+			const params = url.searchParams
+			const payloadString = params.get("payload")
+			if (!payloadString) { return Resp.BadRequest("Empty Payload") }
+			const payload: Payload[] = payloadString.split(",").map((val) => {
+				const arr = val.split("-")
 
-			console.log(`/api/${platform}/${streamer}/profile: ${btoa(ip!.address)}`)
+				return {
+					platform: arr[0]?.toUpperCase() as Platform ?? "KICK",
+					streamer: arr[1]?.toLowerCase() as string ?? "ERR"
+				}
+			})
+			const profileUrls: string[] = []
 
-			if (!streamer) {
-				return Resp.BadRequest(`No Streamer Provided`)
-			} else if (
-				platform !== "KICK" &&
-				platform !== "TWITCH" &&
-				platform !== "TWITTER" &&
-				platform !== "YOUTUBE" 
-			) {
-				return Resp.BadRequest(`Invalid Plaform: ${platform}`)
+			for (const {platform, streamer} of payload) {
+				if (!streamer) {
+					return Resp.BadRequest(`No Streamer Provided for ${platform}`)
+				} else if (
+					platform !== "KICK" &&
+					platform !== "TWITCH" &&
+					platform !== "TWITTER" &&
+					platform !== "YOUTUBE" 
+				) { return Resp.BadRequest(`Invalid Plaform: ${platform}`) }
+
+				if (streamer === "ERR") { return Resp.BadRequest("Error parcing streamer") }
+
+
+				let site = ""
+				switch (platform) {
+				case "TWITCH":
+					 site = `https://twitch.tv/${streamer}`
+					break
+				case "KICK":
+					 site = `https://kick.com/${streamer}`
+					break
+				default:
+					return Resp.BadRequest(`Call to ${platform} is unimplemented`)
+				}
+
+				const [page, pageErr] = await tryCatch(goto(BROWSER, site))
+				if (!page) {
+					console.error(pageErr)
+					return Resp.InternalServerError(`Error on visiting ${site}`)
+				}
+
+				const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, page))
+				if (!profileUrl) {
+					console.error(profileUrlErr)
+					return Resp.InternalServerError(`Error on fetching ${site} profile`)
+				}
+				profileUrls.push(profileUrl)
 			}
 
-            let site = ""
-			switch (platform) {
-            case "TWITCH":
-                site = `https://twitch.tv/${streamer}`
-                break
-			case "KICK":
-                site = `https://kick.com/${streamer}`
-                break
-            default:
-                return Resp.BadRequest(`Call to ${platform} is unimplemented`)
-			}
-
-            const [page, pageErr] = await tryCatch(goto(BROWSER, site))
-            if (!page) {
-                console.error(pageErr)
-                return Resp.BadRequest(`Error on visiting ${site}`)
-            }
-
-            const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, page))
-            if (!profileUrl) {
-                console.error(profileUrlErr)
-                return Resp.BadRequest(`Error on fetching ${site} profile`)
-            }
-
-            return Resp.Ok(profileUrl)
+			return Resp.Ok(profileUrls)
         },
-        "/:platform/:streamer/chat": async (req, server) => {
-            let {platform, streamer} = req.params
-            platform = platform.toUpperCase() as Platform
-            streamer = streamer.toLowerCase()
+		// /chat?payload=kick-xqc,twitch-xqc
+        "/chat": async (req, server) => {
+			const url = new URL(req.url)
+			const params = url.searchParams
+			const payloadString = params.get("payload")
+
+			if (!payloadString) { return Resp.BadRequest("Empty Payload") }
+			const payload: Payload[] = payloadString.split(",").map((val) => {
+				const arr = val.split("-")
+
+				return {
+					platform: arr[0] as Platform ?? "KICK",
+					streamer: arr[1] as string ?? "ERR"
+				}
+			})
+
 			const ip = server.requestIP(req)
 
-			if (!streamer) {
-				return Resp.BadRequest(`No Streamer Provided`)
-			} else if (
-				platform !== "KICK" &&
-				platform !== "TWITCH" &&
-				platform !== "TWITTER" &&
-				platform !== "YOUTUBE" 
-			) {
-				return Resp.BadRequest(`Invalid Plaform: ${platform}`)
+			if (!s.upgrade(req, {
+				data: { payload, clientId: btoa(ip!.address) }
+			})) {
+				return Resp.InternalServerError("Upgrade failed")
 			}
-
-            if (!s.upgrade(req, {
-                data: { streamer, platform, clientId: btoa(ip!.address) },
-            })) {
-                return Resp.InternalServerError("Upgrade failed")
-            }
-            return Resp.Ok()
+			return Resp.Ok()
         }
 	},
 	websocket: {
@@ -122,8 +135,33 @@ const s = Bun.serve<WebSocketData, Routes>({
 		},
 		async open(ws) {
 			const clientId = ws.data.clientId
-			const streamer = ws.data.streamer
-			const platform = ws.data.platform
+			const payload = ws.data.payload
+            let {platform, streamer} = payload[0]!
+
+			if (!platform) { 
+                ws.close(SocketCode.BadRequest, `Invalid Plaform: ${platform}`)
+                console.log(`[${clientId}] has disconnected`)
+                console.log(`Invalid Plaform: ${platform}`)
+			}
+			if (!streamer || streamer === "ERR") { 
+                ws.close(SocketCode.BadRequest, `Invalid Streamer: ${streamer}`)
+                console.log(`[${clientId}] has disconnected`)
+                console.log(`Invalid Streamer: ${streamer}`)
+			}
+			
+			platform = platform.toUpperCase().trim() as Platform
+			streamer = streamer.toLowerCase().trim()
+
+			 if (
+				platform !== "KICK" &&
+				platform !== "TWITCH" &&
+				platform !== "TWITTER" &&
+				platform !== "YOUTUBE" 
+			) {
+                ws.close(SocketCode.BadRequest, `Invalid Plaform: ${platform}`)
+                console.log(`[${clientId}] has disconnected`)
+                console.log(`Invalid Plaform: ${platform}`)
+			}
             console.log(`[${clientId}] has connected`)
 
 
@@ -224,7 +262,10 @@ const s = Bun.serve<WebSocketData, Routes>({
             await page.close()
 		},
 		async close(ws) {
-			ws.unsubscribe(ws.data.platform+ws.data.streamer)
+			for (const pair of ws.data.payload) {
+				const {platform, streamer} = pair
+				ws.unsubscribe(platform+streamer)
+			}
             console.log(`[${ws.data.clientId}] has exited`)
 		}
 	}

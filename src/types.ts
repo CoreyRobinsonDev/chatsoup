@@ -4,9 +4,13 @@ export type Result<T, E = Error> = Success<T> | Failure<E>
 export type Option<T> = T | undefined
 
 export type WebSocketData = {
-	streamer: string
-	platform: Platform
+	payload: Payload[]
 	clientId: string
+}
+
+export type Payload = {
+	platform: Platform
+	streamer: string
 }
 
 export type Badge = {
