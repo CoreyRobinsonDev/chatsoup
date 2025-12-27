@@ -102,7 +102,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 				const [profileUrl, profileUrlErr] = await tryCatch(getProfile(platform as Platform, page))
 				if (!profileUrl) {
 					console.error(profileUrlErr)
-					return Resp.InternalServerError(`Error on fetching ${site} profile`)
+					return Resp.BadRequest(`Error on fetching ${site} profile`)
 				}
 
 				profileUrls.push(profileUrl)
