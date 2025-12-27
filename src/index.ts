@@ -1,7 +1,7 @@
 import { getChat, getProfile, goto, initBrowser } from "./scrape.ts";
 import { Resp, tryCatch, unwrap } from "./util.ts";
 import { type WebSocketData, type Platform, type Payload } from "./types.ts";
-import type { RouterTypes } from "bun";
+import { sql, type RouterTypes } from "bun";
 
 export const SocketCode = {
 	MessageProhibited: 4000,
@@ -97,7 +97,11 @@ const s = Bun.serve<WebSocketData, Routes>({
 					console.error(profileUrlErr)
 					return Resp.InternalServerError(`Error on fetching ${site} profile`)
 				}
+
 				profileUrls.push(profileUrl)
+				await sql`INSERT INTO profiles
+					(streamer, platform, url)
+					VALUES (${streamer}, ${platform}, ${profileUrl});`
 			}
 
 			return Resp.Ok(profileUrls)
