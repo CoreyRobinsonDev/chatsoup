@@ -76,7 +76,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 					WHERE streamer = ${streamer}
 					AND platform = ${platform};`
 
-				console.log(url)
+				console.log(url[0].url)
 				return Resp.Ok()
 
 				let site = ""
