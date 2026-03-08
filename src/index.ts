@@ -72,6 +72,7 @@ const s = Bun.serve<WebSocketData, Routes>({
 				) { return Resp.BadRequest(`Invalid Plaform: ${platform}`) }
 
 				if (streamer === "ERR") { return Resp.BadRequest("Error parcing streamer") }
+
 				const url = await sql`SELECT url FROM profiles
 					WHERE streamer = ${streamer}
 					AND platform = ${platform};`
@@ -115,6 +116,7 @@ const s = Bun.serve<WebSocketData, Routes>({
         },
 		// /chat?payload=kick-xqc,twitch-xqc
         "/chat": async (req, server) => {
+			const ip = server.requestIP(req)?.address ?? "IP_UNDEFINED"
 			const url = new URL(req.url)
 			const params = url.searchParams
 			const payloadString = params.get("payload")
@@ -124,18 +126,15 @@ const s = Bun.serve<WebSocketData, Routes>({
 				const arr = val.split("-")
 
 				return {
-					platform: arr[0] as Platform ?? "KICK",
-					streamer: arr[1] as string ?? "ERR"
+					platform: arr[0]?.toUpperCase() as Platform ?? "KICK",
+					streamer: arr[1]?.toLowerCase() as string ?? "ERR"
 				}
 			})
 
-			const ip = server.requestIP(req)
-
 			if (!s.upgrade(req, {
-				data: { payload, clientId: btoa(ip!.address) }
-			})) {
-				return Resp.InternalServerError("Upgrade failed")
-			}
+				data: { payload, clientId: btoa(ip) }
+			})) { return Resp.InternalServerError("Upgrade failed") }
+
 			return Resp.Ok()
         }
 	},
@@ -147,130 +146,113 @@ const s = Bun.serve<WebSocketData, Routes>({
 		async open(ws) {
 			const clientId = ws.data.clientId
 			const payload = ws.data.payload
-            let {platform, streamer} = payload[0]!
 
-			if (!platform) { 
-                ws.close(SocketCode.BadRequest, `Invalid Plaform: ${platform}`)
-                console.log(`[${clientId}] has disconnected`)
-                console.log(`Invalid Plaform: ${platform}`)
+			for (const {platform, streamer} of payload) {
+				if (streamer === "ERR") { 
+					ws.close(SocketCode.BadRequest, `Invalid Streamer: ${streamer}`)
+					console.log(`[${clientId}] has disconnected`)
+					console.log(`Invalid Streamer: ${streamer}`)
+				}
+
+				console.log(`[${clientId}] has connected`)
+
+
+				console.log(`[${clientId}] /${platform}/${streamer}`)
+				ws.subscribe(platform+streamer)
+				if (s.subscriberCount(platform+streamer) > 1) return
+
+				let site = ""
+				switch (platform) {
+				case "TWITCH":
+					site = `https://twitch.tv/popout/${streamer}/chat`
+					break
+				case "KICK":
+					site = `https://kick.com/${streamer}/chatroom`
+					break
+				default:
+					ws.unsubscribe(platform+streamer)
+					ws.close(SocketCode.InternalServerError, `Call to ${platform} is unimplemented`)
+					console.log(`[${clientId}] has disconnected`)
+					console.log(`\t[${clientId}] Call to ${platform} is unimplemented`)
+				}
+
+				const [page, pageErr] = await tryCatch(goto(BROWSER, site))
+				let lastUsername = "" 
+				let lastContent = ""
+				let emptyResponses = 0
+				const emptyRepsonseLimit = 500
+
+				if (!page) {
+					ws.unsubscribe(platform+streamer)
+					ws.close(SocketCode.InternalServerError, `Error on visiting ${site}`)
+					console.log(`[${clientId}] has disconnected`)
+					console.error(`\tError on visiting ${site}`)
+					console.error(`\t${pageErr}`)
+					return
+				}
+
+				while (s.subscriberCount(platform+streamer) > 0) {
+					const [chat, chatErr] = await tryCatch(getChat(platform, page))
+
+					if (!chat) {
+						ws.unsubscribe(platform+streamer)
+						ws.close(SocketCode.InternalServerError, `Error on scraping ${site}`)
+						await page.close()
+						console.log(`[${clientId}] has disconnected`)
+						console.error(`\t[${clientId}] Error on scraping ${site}`)
+						console.error(`\t${chatErr}`)
+						return
+					}
+
+					if (chat.length === 0) {
+						// NOTE: ignore for now since twitch chat takes too long to load meaningful data
+						console.log(`[${clientId}] no chat fetched...`)
+						continue
+						// console.log(`[${clientId}] has disconnected`)
+						// console.log(`\t[${clientId}] ${platform} streamer ${streamer} is offline`)
+						// ws.unsubscribe(platform+streamer)
+						// ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer.toLowerCase()} is offline`)
+						// await page.close()
+						// return
+					}
+
+					const idx = chat.findIndex(el => el.userName === lastUsername && el.content === lastContent)
+					if (idx === -1) {
+						if (chat.length === 0) {
+							emptyResponses++
+							if (emptyResponses >= emptyRepsonseLimit) {
+								console.log(`[${clientId}] has disconnected`)
+								console.log(`\t${platform} streamer ${streamer} is offline`)
+								ws.unsubscribe(platform+streamer)
+								ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
+								await page.close()
+								return
+							}
+							continue 
+						}
+						emptyResponses = 0
+						s.publish(platform+streamer, JSON.stringify(chat), true)
+					} else {
+						if (chat.slice(0, idx).length === 0) {
+							emptyResponses++
+							if (emptyResponses >= emptyRepsonseLimit) {
+								console.log(`[${clientId}] has disconnected`)
+								console.log(`\t${platform} streamer ${streamer} is offline`)
+								ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
+								await page.close()
+								return
+							}
+							continue 
+						}
+						emptyResponses = 0
+						s.publish(platform+streamer, JSON.stringify(chat.slice(0, idx)), true)
+					}
+					lastUsername = chat[0]!.userName
+					lastContent = chat[0]!.content
+					await Bun.sleep(100)
+				}
+				await page.close()
 			}
-			if (!streamer || streamer === "ERR") { 
-                ws.close(SocketCode.BadRequest, `Invalid Streamer: ${streamer}`)
-                console.log(`[${clientId}] has disconnected`)
-                console.log(`Invalid Streamer: ${streamer}`)
-			}
-			
-			platform = platform.toUpperCase().trim() as Platform
-			streamer = streamer.toLowerCase().trim()
-
-			 if (
-				platform !== "KICK" &&
-				platform !== "TWITCH" &&
-				platform !== "TWITTER" &&
-				platform !== "YOUTUBE" 
-			) {
-                ws.close(SocketCode.BadRequest, `Invalid Plaform: ${platform}`)
-                console.log(`[${clientId}] has disconnected`)
-                console.log(`Invalid Plaform: ${platform}`)
-			}
-            console.log(`[${clientId}] has connected`)
-
-
-            console.log(`[${clientId}] /${platform}/${streamer}`)
-			ws.subscribe(platform+streamer)
-			if (s.subscriberCount(platform+streamer) > 1) return
-
-            let site = ""
-			switch (platform) {
-            case "TWITCH":
-                site = `https://twitch.tv/popout/${streamer}/chat`
-                break
-			case "KICK":
-                site = `https://kick.com/${streamer}/chatroom`
-                break
-            default:
-                ws.unsubscribe(platform+streamer)
-                ws.close(SocketCode.InternalServerError, `Call to ${platform} is unimplemented`)
-                console.log(`[${clientId}] has disconnected`)
-                console.log(`\t[${clientId}] Call to ${platform} is unimplemented`)
-			}
-
-            const [page, pageErr] = await tryCatch(goto(BROWSER, site))
-            let lastUsername = "" 
-            let lastContent = ""
-            let emptyResponses = 0
-            const emptyRepsonseLimit = 500
-
-            if (!page) {
-                ws.unsubscribe(platform+streamer)
-                ws.close(SocketCode.InternalServerError, `Error on visiting ${site}`)
-                console.log(`[${clientId}] has disconnected`)
-                console.error(`\tError on visiting ${site}`)
-                console.error(`\t${pageErr}`)
-                return
-            }
-
-            while (s.subscriberCount(platform+streamer) > 0) {
-                const [chat, chatErr] = await tryCatch(getChat(platform, page))
-
-                if (!chat) {
-                    ws.unsubscribe(platform+streamer)
-                    ws.close(SocketCode.InternalServerError, `Error on scraping ${site}`)
-                    await page.close()
-                    console.log(`[${clientId}] has disconnected`)
-                    console.error(`\t[${clientId}] Error on scraping ${site}`)
-                    console.error(`\t${chatErr}`)
-                    return
-                }
-
-                if (chat.length === 0) {
-					// NOTE: ignore for now since twitch chat takes too long to load meaningful data
-                    console.log(`[${clientId}] no chat fetched...`)
-					continue
-                    // console.log(`[${clientId}] has disconnected`)
-                    // console.log(`\t[${clientId}] ${platform} streamer ${streamer} is offline`)
-                    // ws.unsubscribe(platform+streamer)
-                    // ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer.toLowerCase()} is offline`)
-                    // await page.close()
-                    // return
-                }
-
-                const idx = chat.findIndex(el => el.userName === lastUsername && el.content === lastContent)
-                if (idx === -1) {
-                    if (chat.length === 0) {
-                        emptyResponses++
-                        if (emptyResponses >= emptyRepsonseLimit) {
-                            console.log(`[${clientId}] has disconnected`)
-                            console.log(`\t${platform} streamer ${streamer} is offline`)
-                            ws.unsubscribe(platform+streamer)
-                            ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
-                            await page.close()
-                            return
-                        }
-                        continue 
-                    }
-                    emptyResponses = 0
-                    s.publish(platform+streamer, JSON.stringify(chat), true)
-                } else {
-                    if (chat.slice(0, idx).length === 0) {
-                        emptyResponses++
-                        if (emptyResponses >= emptyRepsonseLimit) {
-                            console.log(`[${clientId}] has disconnected`)
-                            console.log(`\t${platform} streamer ${streamer} is offline`)
-                            ws.close(SocketCode.BadRequest, `${platform.toLowerCase()} streamer ${streamer} is offline`)
-                            await page.close()
-                            return
-                        }
-                        continue 
-                    }
-                    emptyResponses = 0
-                    s.publish(platform+streamer, JSON.stringify(chat.slice(0, idx)), true)
-                }
-                lastUsername = chat[0]!.userName
-                lastContent = chat[0]!.content
-                await Bun.sleep(100)
-            }
-            await page.close()
 		},
 		async close(ws) {
 			for (const pair of ws.data.payload) {
